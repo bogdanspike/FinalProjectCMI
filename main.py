@@ -3,11 +3,13 @@ import json
 import flask
 from PIL import Image
 from bson import json_util
-from flask import Flask, request
+from certifi.__main__ import args
+from flask import Flask, request, jsonify
 from flask_restful import Resource, Api
 
 from models.users import Users
 from models.leads import Leads
+from models.message import Message
 
 app = Flask(__name__)
 api = Api(app)
@@ -92,7 +94,6 @@ class LeadsResource(Resource):
             my_image = image
             new_lead.image.replace(my_image)
             new_lead.save()
-
             return 'Success', 200
         except Exception as e:
             return f':{e}', 500
@@ -103,9 +104,33 @@ class LeadsAndSales(Resource):
         return 'This is the page for Leads&Sales'
 
 
-class Chat(Resource):
+class ChatHistory(Resource):
+    def get(self):
+        sender = request.args.get("sender")
+        receiver = request.args.get("receiver")
+        conv_id = sender + receiver
+        list_of_msg = Message.objects(conv_id=conv_id).scalar('message', 'sender', 'receiver')
+        msg_to_json = [json.loads(Message(message=obj[0], sender=obj[1], receiver=obj[2]).to_json()) for obj in
+                       list_of_msg]
+        return {'result': msg_to_json}, 200
+
     def post(self):
-        return 'Message'
+        try:
+            sender = request.form.get('sender')
+            receiver = request.form.get('receiver')
+            message = request.form.get('message')
+            # TODO: transform this into a hash
+            conv_id = sender + receiver
+            messages = Message.objects(conv_id=conv_id)
+            if not messages:
+                Message(sender=sender, receiver=receiver, message=message, conv_id=conv_id, msg_number=1).save()
+            else:
+                msg_number = messages[len(messages) - 1].msg_number + 1
+                Message(sender=sender, receiver=receiver, message=message, conv_id=conv_id,
+                        msg_number=msg_number).save()
+            return 'Success', 200
+        except Exception as e:
+            return f':{e}', 500
 
 
 api.add_resource(Home, '/home')
@@ -114,7 +139,7 @@ api.add_resource(Login, '/login')
 api.add_resource(ChangePassword, '/changepw')
 api.add_resource(LeadsResource, '/leads')
 api.add_resource(LeadsAndSales, '/leads_and_sales')
-api.add_resource(Chat, '/chat')
+api.add_resource(ChatHistory, '/chat')
 
 if __name__ == '__main__':
     app.run()
